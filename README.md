@@ -25,6 +25,8 @@ what will let milestone 2 drop you into the right line of timestamped lyrics.
 | `api/recognize.ts` | Serverless function. Holds the API key, calls AudD. |
 | `public/manifest.webmanifest`, `public/sw.js` | The bits that make it a PWA. |
 | `scripts/generate-icons.mjs` | Regenerates the app icons (`npm run icons`). |
+| `server/index.mjs` | Production server for self-hosting (Docker). Unused on Vercel. |
+| `Dockerfile`, `docker-compose.yml` | Self-hosting in one container. |
 
 ---
 
@@ -89,6 +91,8 @@ Then open the `https://…` URL it prints on your phone.
 | `npm run build` | Type-check, then build to `dist/`. |
 | `npm run preview` | Serve the production build locally.¹ |
 | `npm run typecheck` | Type-check only. |
+| `npm run build:server` | Bundle the self-hosting server to `server-dist/`. |
+| `npm start` | Run the built self-hosting server (needs both builds first). |
 | `npm run icons` | Regenerate the PWA icons in `public/`. |
 
 ¹ `vite preview` serves static files only — `/api/recognize` won't exist, so
@@ -173,7 +177,64 @@ Three other iOS details handled in `src/lib/recorder.ts`:
 
 ---
 
-## Deploying to Vercel
+## Deploying
+
+The app needs a server for `/api/recognize`, so a static-file host alone is not
+enough. Two supported ways to run it:
+
+### Option A — Self-hosting with Docker (NAS, VPS, homelab)
+
+One container serves both the React app and the API, on port **8080**.
+
+```bash
+# 1. Put your token in .env next to docker-compose.yml
+echo "AUDD_API_TOKEN=your_real_token_here" > .env
+
+# 2. Build and start
+docker compose up -d --build
+
+# 3. Check it
+curl http://localhost:8080/healthz     # -> ok
+```
+
+The token is read from the environment at run time, so it is **never baked into
+the image** — the image is safe to rebuild, copy between machines, or push to a
+private registry.
+
+**Putting it behind nginx Proxy Manager:**
+
+| Field | Value |
+| --- | --- |
+| Scheme | `http` (TLS is terminated by NPM, not the container) |
+| Forward Hostname / IP | your host's LAN IP, or the container name on a shared Docker network |
+| Forward Port | `8080` |
+| Block Common Exploits | on |
+| SSL | request a certificate and enable **Force SSL** |
+
+Three things worth knowing:
+
+- **HTTPS is not optional.** Browsers only allow microphone access on a secure
+  origin. Once NPM serves the site over `https://`, the browser is happy — the
+  proxy talking plain HTTP to the container behind it is fine.
+- **Use a subdomain, not a subpath.** The app is built for the root path
+  (`https://sing.example.com/`, not `https://example.com/sing/`). A subpath
+  needs Vite's `base` option set at build time.
+- **If Listen fails with a 413,** the proxy is rejecting the upload. Add
+  `client_max_body_size 10m;` to the proxy host's *Advanced* tab. A 10-second
+  clip is usually 100–250 KB, so this only bites if a default is unusually low.
+
+To update after pulling new code: `docker compose up -d --build`.
+
+**Running without Compose:**
+
+```bash
+docker build -t singalong .
+docker run -d --name singalong -p 8080:8080 \
+  -e AUDD_API_TOKEN=your_real_token_here \
+  --restart unless-stopped singalong
+```
+
+### Option B — Vercel
 
 1. Push this repo to GitHub and import it at
    [vercel.com/new](https://vercel.com/new). The Vite preset is detected
@@ -187,6 +248,9 @@ Three other iOS details handled in `src/lib/recorder.ts`:
 > Re-deploy after adding the environment variable; it isn't applied to existing
 > builds.
 
+On Vercel, `server/index.mjs` and the Dockerfile are unused — Vercel serves
+`dist/` itself and turns `api/recognize.ts` into a serverless function.
+
 ---
 
 ## Troubleshooting
@@ -199,6 +263,9 @@ Three other iOS details handled in `src/lib/recorder.ts`:
 | "No match found" every time | Play the music louder / closer, and aim for a section with vocals. Instrumental and live recordings match poorly. |
 | "Wrong API token" | AudD rejected the token — check for stray whitespace or quotes in `.env`. |
 | Recognition fails only in `npm run preview` | Expected: `preview` serves static files with no `/api`. Use `npm run dev`. |
+| Self-hosted: Listen fails with 413 | The reverse proxy is rejecting the upload. Add `client_max_body_size 10m;` to the proxy host's Advanced tab. |
+| Self-hosted: mic button says unavailable | The site is being served over plain `http://`. Terminate TLS at the proxy and force SSL. |
+| Self-hosted: page loads but `/api/recognize` 404s | The container is serving only static files. Make sure you built with the provided `Dockerfile`, not a bare nginx image. |
 
 ---
 

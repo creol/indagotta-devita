@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+server-dist/
 
 # Local environment files (NEVER commit real API keys)
 .env
