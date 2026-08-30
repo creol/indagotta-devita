@@ -12,10 +12,47 @@ cd "$SCRIPT_DIR"
 VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": *"//;s/".*//')
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Deploying singalong v${VERSION}..."
 
-# QNAP requires root for docker.
+# Container Station's docker is not on a non-interactive shell's PATH. That is
+# why `ssh chonk 'bash deploy.sh'` dies with "docker: command not found" while
+# the identical command typed into an SSH session works -- and it would break
+# the cron watcher too, since cron is non-interactive as well.
+if ! command -v docker >/dev/null 2>&1; then
+  # Ask a login shell first: it resolves the same docker an interactive session
+  # would use, which matters because several volumes each carry a copy.
+  DOCKER_BIN="$(bash -lc 'command -v docker' 2>/dev/null)"
+  if [ -x "$DOCKER_BIN" ]; then
+    PATH="$(dirname "$DOCKER_BIN"):$PATH"
+  else
+    for candidate in /share/*/.qpkg/container-station/bin; do
+      if [ -x "$candidate/docker" ]; then PATH="$candidate:$PATH"; break; fi
+    done
+  fi
+  export PATH
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "ERROR: docker not found. Is Container Station installed and running?"
+  exit 1
+fi
+
+# QNAP's docker socket is admin:administrators, and this account is usually in
+# that group -- so sudo is often unnecessary. Test before reaching for it: a
+# sudo password prompt has nowhere to go in an unattended run (cron, ssh) and
+# would hang the deploy indefinitely rather than failing.
 SUDO=""
-if [ "$(id -u)" != "0" ]; then
+if [ "$(id -u)" != "0" ] && ! docker ps >/dev/null 2>&1; then
   SUDO="sudo"
+  # Fail fast rather than blocking on a prompt nobody can answer.
+  if ! sudo -n true 2>/dev/null; then
+    if [ ! -t 0 ]; then
+      echo "ERROR: docker needs sudo here, but this is not an interactive shell"
+      echo "       and sudo wants a password, so it would hang."
+      echo "       Run it from an SSH session, or add this account to the group"
+      echo "       owning /var/run/docker.sock."
+      exit 1
+    fi
+    echo "docker requires sudo; you will be prompted for a password."
+  fi
 fi
 
 # docker compose v2 if present, else the v1 binary.
