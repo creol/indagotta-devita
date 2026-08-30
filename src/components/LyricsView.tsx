@@ -5,10 +5,10 @@ import type { LyricsResponse, LyricsStatus, Song } from '../types'
 
 interface LyricsViewProps {
   song: Song
-  /** How far into the song we were when recording STARTED, in seconds. */
+  /** AudD's timecode in seconds: where the matched fragment sits in the song. */
   startOffsetSec: number | null
-  /** `Date.now()` at the moment the microphone went live. */
-  recordingStartedAtMs: number | null
+  /** `Date.now()` at the moment capture stopped -- see the clock note below. */
+  anchorAtMs: number | null
 }
 
 /** How long to leave auto-scroll off after the user scrolls by hand. */
@@ -20,25 +20,33 @@ const USER_SCROLL_GRACE_MS = 5000
  * The clock is the heart of this. We never hear the song, so we cannot follow
  * it; instead we work out where it must be by now:
  *
- *     position = offsetAtRecordingStart + (now - whenRecordingStarted)
+ *     position = auddTimecode + (now - whenCaptureStopped)
  *
- * Anchoring to when the *recording* started, rather than to when the lyrics
- * finished loading, matters: ten seconds of recording plus a couple of seconds
- * of recognition and lookup means an unanchored clock would start a dozen or
- * more seconds behind the music.
+ * Which instant we anchor to is the whole ballgame, and it is easy to get
+ * wrong. AudD's `timecode` is *not* "the song position when your upload
+ * begins" -- it is where the fragment AudD matched sits in the song. Our clip
+ * is shorter than the 12-second window AudD matches against, so that fragment
+ * effectively ends where our clip ends. Anchoring to the moment recording
+ * STARTED therefore double-counted the whole clip and ran the lyrics about ten
+ * seconds ahead of the music.
  *
- * That still leaves small errors -- the exact point AudD matched, network jitter
- * -- so there is a manual nudge. A second out is very noticeable when you are
- * trying to sing along.
+ * Anchoring to wall-clock time (rather than counting up from when the lyrics
+ * rendered) still matters for the other reason: recognition and the lyrics
+ * lookup take a few seconds, and a clock started on render would begin that
+ * far behind.
+ *
+ * Residual error remains -- exactly where inside the clip AudD locked on moves
+ * a little between attempts -- so there is a manual nudge. A second out is very
+ * noticeable when you are trying to sing along.
  */
-export function LyricsView({ song, startOffsetSec, recordingStartedAtMs }: LyricsViewProps) {
+export function LyricsView({ song, startOffsetSec, anchorAtMs }: LyricsViewProps) {
   const [status, setStatus] = useState<LyricsStatus>('idle')
   const [lyrics, setLyrics] = useState<LyricsResponse | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   // Whether we can actually sync. Without a timecode we still show the words,
   // just from the top and paused, rather than pretending to be in time.
-  const canSync = startOffsetSec !== null && recordingStartedAtMs !== null
+  const canSync = startOffsetSec !== null && anchorAtMs !== null
 
   const [positionSec, setPositionSec] = useState(startOffsetSec ?? 0)
   const [isRunning, setIsRunning] = useState(canSync)
@@ -52,7 +60,7 @@ export function LyricsView({ song, startOffsetSec, recordingStartedAtMs }: Lyric
    */
   const anchorRef = useRef({
     songPos: startOffsetSec ?? 0,
-    wallClock: recordingStartedAtMs ?? Date.now(),
+    wallClock: anchorAtMs ?? Date.now(),
   })
 
   const scrollBoxRef = useRef<HTMLDivElement | null>(null)
@@ -256,7 +264,19 @@ export function LyricsView({ song, startOffsetSec, recordingStartedAtMs }: Lyric
                   {isRunning ? '❚❚' : '▶'}
                 </button>
 
+                {/* Two step sizes on purpose. Where inside the clip AudD locked
+                    on moves between attempts, so the residual error is usually a
+                    second or two but occasionally more -- 5s gets you close in one
+                    tap, 1s dials it in. */}
                 <div className="lyrics-view__sync">
+                  <button
+                    type="button"
+                    className="lyrics-view__button lyrics-view__button--small"
+                    onClick={() => nudge(-5)}
+                    aria-label="Lyrics are ahead — go back five seconds"
+                  >
+                    −5s
+                  </button>
                   <button
                     type="button"
                     className="lyrics-view__button lyrics-view__button--small"
@@ -275,6 +295,14 @@ export function LyricsView({ song, startOffsetSec, recordingStartedAtMs }: Lyric
                     aria-label="Lyrics are behind — go forward one second"
                   >
                     +1s
+                  </button>
+                  <button
+                    type="button"
+                    className="lyrics-view__button lyrics-view__button--small"
+                    onClick={() => nudge(5)}
+                    aria-label="Lyrics are behind — go forward five seconds"
+                  >
+                    +5s
                   </button>
                 </div>
               </div>

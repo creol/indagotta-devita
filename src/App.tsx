@@ -18,11 +18,14 @@ export default function App() {
   // Held in a ref (not state) so we can always clear it, even from cleanup.
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // When the microphone actually went live. AudD's timecode describes the start
-  // of the recorded clip, so this timestamp plus that offset is what lets the
-  // lyrics work out where the song is *now* -- roughly 12 seconds later, once
-  // recording, recognition and the lyrics lookup have all finished.
-  const [recordingStartedAtMs, setRecordingStartedAtMs] = useState<number | null>(null)
+  // When capture STOPPED -- the wall-clock time of the last audio we sent.
+  //
+  // This is the anchor for the lyrics clock. AudD's `timecode` is the position
+  // in the song of the fragment it matched, not the position at the start of
+  // our upload, and for a clip shorter than AudD's 12-second matching window
+  // that fragment sits at the end of what we sent. Anchoring to the start of
+  // recording therefore ran the lyrics a full clip-length (~10s) ahead.
+  const [anchorAtMs, setAnchorAtMs] = useState<number | null>(null)
 
   // Some browsers simply cannot do this. Checking once up front lets us show a
   // clear explanation instead of a button that fails when tapped.
@@ -50,17 +53,16 @@ export default function App() {
     // Reset anything left over from the previous attempt.
     setResult(null)
     setErrorMessage(null)
-    setRecordingStartedAtMs(null)
+    setAnchorAtMs(null)
     setSecondsLeft(RECORD_SECONDS)
     setStatus('requesting-mic')
 
     try {
-      const { blob, mimeType } = await recordClip({
+      const { blob, mimeType, stoppedAtMs } = await recordClip({
         durationMs: RECORD_SECONDS * 1000,
         // Fired once the microphone is actually live, so the countdown we show
         // matches the audio we are really capturing.
         onRecordingStarted: () => {
-          setRecordingStartedAtMs(Date.now())
           setStatus('recording')
           countdownRef.current = setInterval(() => {
             setSecondsLeft((current) => (current > 0 ? current - 1 : 0))
@@ -69,6 +71,7 @@ export default function App() {
       })
 
       stopCountdown()
+      setAnchorAtMs(stoppedAtMs)
       setStatus('identifying')
 
       const recognition = await recognizeClip(blob, mimeType)
@@ -155,7 +158,7 @@ export default function App() {
           <LyricsView
             song={song}
             startOffsetSec={timecodeToSeconds(song.timecode)}
-            recordingStartedAtMs={recordingStartedAtMs}
+            anchorAtMs={anchorAtMs}
           />
         </>
       )}

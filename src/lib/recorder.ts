@@ -48,6 +48,17 @@ function pickMimeType(): string | undefined {
 export interface RecordingResult {
   blob: Blob
   mimeType: string
+  /**
+   * `Date.now()` at the instant capture stopped -- i.e. the wall-clock time of
+   * the LAST audio in `blob`.
+   *
+   * This is what the lyrics clock anchors to. AudD's `timecode` reports where
+   * the matched fragment sits in the song, and for a clip shorter than the
+   * 12-second window AudD matches against, that lands at the end of what we
+   * sent rather than the beginning. Anchoring to the start instead put the
+   * lyrics a whole clip-length ahead of the music.
+   */
+  stoppedAtMs: number
 }
 
 export interface RecordOptions {
@@ -96,6 +107,10 @@ export async function recordClip({
       if (event.data.size > 0) chunks.push(event.data)
     })
 
+    // Set the moment we stop capture, so the timestamp is not skewed by however
+    // long the browser then takes to assemble the blob.
+    let stoppedAtMs = 0
+
     const finished = new Promise<RecordingResult>((resolve, reject) => {
       recorder.addEventListener('stop', () => {
         // recorder.mimeType is the format the browser actually used, which can
@@ -106,7 +121,7 @@ export async function recordClip({
           reject(new Error('No audio was captured. Check that your microphone is not muted.'))
           return
         }
-        resolve({ blob, mimeType: type })
+        resolve({ blob, mimeType: type, stoppedAtMs: stoppedAtMs || Date.now() })
       })
 
       recorder.addEventListener('error', () => {
@@ -123,6 +138,7 @@ export async function recordClip({
     await new Promise((resolve) => setTimeout(resolve, durationMs))
 
     // The recorder may already have stopped itself if something went wrong.
+    stoppedAtMs = Date.now()
     if (recorder.state !== 'inactive') recorder.stop()
 
     return await finished
