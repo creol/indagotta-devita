@@ -16,3 +16,11 @@ server-dist/
 # Editor / OS noise
 .DS_Store
 *.log
+
+# Watcher runtime state (created on the NAS by ensure-watcher.sh)
+deploy.log
+deploy.log.1
+.watcher.pid
+.watcher.ver
+.watcher.lock/
+.watcher-heartbeat

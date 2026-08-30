@@ -27,6 +27,8 @@ what will let milestone 2 drop you into the right line of timestamped lyrics.
 | `scripts/generate-icons.mjs` | Regenerates the app icons (`npm run icons`). |
 | `server/index.mjs` | Production server for self-hosting (Docker). Unused on Vercel. |
 | `Dockerfile`, `docker-compose.yml` | Self-hosting in one container. |
+| `deploy.sh` | Rebuild + restart on the NAS. |
+| `watch-deploy.sh`, `ensure-watcher.sh` | Optional auto-deploy on file save. |
 
 ---
 
@@ -199,25 +201,45 @@ docker compose up -d --build
 curl http://localhost:3300/healthz     # -> ok
 ```
 
-**QNAP workflow (Windows -> NAS over SMB):**
+**QNAP workflow (chonk):**
 
-There is no need to `git clone` on the NAS. Sync the source across and build
-there:
+There is **no push step and no copy step.** `Y:\` is a mapped network drive to
+`\\CHONK\docker_containers` -> `/share/ZFS21_DATA/docker_containers` on the NAS,
+so the working directory *is* the server. Editing a file in `Y:\indagotta-devita`
+edits it in production. The GitHub remote is for version history only; nothing
+pulls from it to deploy.
+
+Set up once, from Windows:
 
 ```
-1. deploy-to-qnap.bat          (on Windows) robocopy C:\Dev -> Y:\indagotta-devita
-2. ssh admin@your-nas
-3. cd /share/ZFS21_DATA/docker_containers/indagotta-devita
-4. ./deploy.sh                 builds the image and restarts the container
+git clone https://github.com/creol/indagotta-devita.git Y:\indagotta-devita
+cd /d Y:\indagotta-devita
+echo AUDD_API_TOKEN=your_token_here > .env
 ```
 
-`deploy.sh --clean` forces a no-cache rebuild. The `.env` holding your token
-lives **only on the NAS** and is excluded from the robocopy mirror, so a sync
-never deletes or overwrites it — create it once, on the NAS.
+Then on chonk:
 
-The token is read from the environment at run time, so it is **never baked into
-the image** — the image is safe to rebuild, copy between machines, or push to a
-private registry.
+```bash
+cd /share/ZFS21_DATA/docker_containers/indagotta-devita
+bash deploy.sh                              # build and start
+sudo bash ensure-watcher.sh --install-cron  # optional: auto-deploy on save
+```
+
+With the watcher installed, saving a file under `src/`, `api/`, `server/`,
+`public/`, or any of the root build files triggers a rebuild automatically;
+output goes to `deploy.log`. Without it, run `bash deploy.sh` by hand.
+`deploy.sh --clean` forces a `--no-cache` rebuild.
+
+`ensure-watcher.sh` is copied verbatim from `campaign_app` — same cron safety
+net, same lock and version checks. **A QNAP firmware update wipes
+`/etc/config/crontab` and reboots**, so re-run `sudo bash ensure-watcher.sh
+--install-cron` afterwards or the watcher loses its safety net. Check it with
+`bash ensure-watcher.sh --status`.
+
+> Unlike `campaign_app`, this project has no bind-mounted `data/` and no
+> watcher-liveness API, so a dead watcher is not reported anywhere. It is
+> checked by hand with `--status`. Nothing here is stateful, so a stale
+> container serves old code but loses no data.
 
 **Putting it behind nginx Proxy Manager:**
 
