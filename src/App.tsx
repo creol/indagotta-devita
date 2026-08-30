@@ -18,6 +18,12 @@ export default function App() {
   // Held in a ref (not state) so we can always clear it, even from cleanup.
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // When the microphone actually went live. AudD's timecode describes the start
+  // of the recorded clip, so this timestamp plus that offset is what lets the
+  // lyrics work out where the song is *now* -- roughly 12 seconds later, once
+  // recording, recognition and the lyrics lookup have all finished.
+  const [recordingStartedAtMs, setRecordingStartedAtMs] = useState<number | null>(null)
+
   // Some browsers simply cannot do this. Checking once up front lets us show a
   // clear explanation instead of a button that fails when tapped.
   const [supported] = useState(isRecordingSupported)
@@ -44,6 +50,7 @@ export default function App() {
     // Reset anything left over from the previous attempt.
     setResult(null)
     setErrorMessage(null)
+    setRecordingStartedAtMs(null)
     setSecondsLeft(RECORD_SECONDS)
     setStatus('requesting-mic')
 
@@ -53,6 +60,7 @@ export default function App() {
         // Fired once the microphone is actually live, so the countdown we show
         // matches the audio we are really capturing.
         onRecordingStarted: () => {
+          setRecordingStartedAtMs(Date.now())
           setStatus('recording')
           countdownRef.current = setInterval(() => {
             setSecondsLeft((current) => (current > 0 ? current - 1 : 0))
@@ -144,8 +152,11 @@ export default function App() {
       {song && (
         <>
           <SongCard song={song} />
-          {/* Placeholder for now -- milestone 2 turns this into scrolling lyrics. */}
-          <LyricsView song={song} startOffsetSec={timecodeToSeconds(song.timecode)} />
+          <LyricsView
+            song={song}
+            startOffsetSec={timecodeToSeconds(song.timecode)}
+            recordingStartedAtMs={recordingStartedAtMs}
+          />
         </>
       )}
 

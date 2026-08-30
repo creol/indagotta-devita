@@ -8,7 +8,10 @@ you are.
 That last number is the point of the whole milestone: knowing the time offset is
 what will let milestone 2 drop you into the right line of timestamped lyrics.
 
-> **Status:** milestone 1 of the sing-along app. Lyrics are a placeholder for now.
+Then the words scroll past in time with the music, so you can actually sing
+along.
+
+> **Status:** milestones 1 and 2 complete — recognition and synced lyrics.
 
 ---
 
@@ -21,8 +24,10 @@ what will let milestone 2 drop you into the right line of timestamped lyrics.
 | `src/lib/recognize.ts` | Talks to our own `/api/recognize`. |
 | `src/components/ListenButton.tsx` | The big round button + countdown. |
 | `src/components/SongCard.tsx` | Title / artist / time offset. |
-| `src/components/LyricsView.tsx` | **Placeholder** — wired up in milestone 2. |
+| `src/components/LyricsView.tsx` | Timestamped lyrics that scroll with the song. |
+| `src/lib/lrc.ts` | LRC parsing and "which line is playing now". |
 | `api/recognize.ts` | Serverless function. Holds the API key, calls AudD. |
+| `api/lyrics.ts` | Serverless function. Finds LRC lyrics via LRCLIB. |
 | `public/manifest.webmanifest`, `public/sw.js` | The bits that make it a PWA. |
 | `scripts/generate-icons.mjs` | Regenerates the app icons (`npm run icons`). |
 | `server/index.mjs` | Production server for self-hosting (Docker). Unused on Vercel. |
@@ -319,16 +324,38 @@ $//' .env` |
 
 ---
 
-## What's next (milestone 2)
+## How the lyrics stay in time
 
-`src/components/LyricsView.tsx` is a placeholder that already receives the props
-the real thing needs — the matched `song` and `startOffsetSec`. The plan:
+We never hear the song, so we cannot follow it. Instead we work out where it
+must be by now:
 
-1. Fetch timestamped lyrics (LRC format) for the matched song via a new
-   `/api` route.
-2. Parse the LRC into `{ timeSec, text }` lines.
-3. Start a clock from `startOffsetSec`, highlight the current line, and
-   auto-scroll.
+```
+position = offsetWhenRecordingStarted + (now - whenRecordingStarted)
+```
 
-`timecodeToSeconds()` in `src/lib/recognize.ts` already converts AudD's
-`"01:24"` into the `84` that step 3 needs.
+The subtle part is the anchor. Recording takes 10 seconds, and recognition and
+the lyrics lookup add a couple more — so a clock started when the lyrics finish
+loading would sit **twelve or more seconds behind the music**. Anchoring instead
+to the moment the microphone went live, paired with AudD's timecode for that
+moment, puts the first highlighted line in the right place.
+
+Small errors survive that — exactly which point AudD matched, network jitter —
+so there are **−1s / +1s** buttons. A second out is very noticeable when you are
+trying to sing.
+
+Lyrics come from [LRCLIB](https://lrclib.net): free, open, no API key. Because
+recognition returns *release* titles, `api/lyrics.ts` retries with progressively
+cleaner variants — `Mystify (Remastered 2011)` → `Mystify`, and the medley
+`Head Over Heels / Broken` → `Head Over Heels` — and prefers the result whose
+duration is closest to the recognised track, since a live cut's timings drift
+further out of step the longer it runs.
+
+Three outcomes besides success, all handled in the UI: a track with words but no
+timings shows them unhighlighted, an instrumental says so, and an unknown track
+says nothing was found rather than failing.
+
+## What's next
+
+- Cache lyrics lookups server-side so repeat plays skip the round trip.
+- Let the user correct a wrong match by searching manually.
+- A bigger nudge control (±0.1s) for fine sync.

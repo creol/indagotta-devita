@@ -9,7 +9,29 @@ export interface Song {
   timecode: string | null
   /** A shareable audd.io link to the track, when available. */
   songLink: string | null
+  /** Track length in seconds, when a streaming provider reported one. */
+  durationSec: number | null
 }
+
+/** What /api/lyrics can come back with. */
+export type LyricsResponse =
+  | {
+      status: 'found'
+      /** Raw LRC text, e.g. "[00:01.23] All veils and misty". */
+      lrc: string
+      trackName: string
+      artistName: string
+      albumName: string | null
+      durationSec: number | null
+      /** Which title/artist variant actually matched, for debugging odd hits. */
+      matchedQuery: string
+    }
+  | { status: 'unsynced'; plainLyrics: string; trackName: string; artistName: string }
+  | { status: 'instrumental' }
+  | { status: 'not_found' }
+
+/** Loading states for the lyrics panel. */
+export type LyricsStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 /**
  * The three possible outcomes of a recognition attempt. Modelling it as a

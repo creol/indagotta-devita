@@ -50,6 +50,11 @@ interface AudDResponse {
     label?: string
     timecode?: string
     song_link?: string
+    // Requested via `return=apple_music,spotify` below. We only want the track
+    // length: knowing it lets the lyrics lookup tell a 3:30 studio cut from a
+    // 7:00 live version, whose timings would drift badly against this one.
+    spotify?: { duration_ms?: number } | null
+    apple_music?: { durationInMillis?: number } | null
   } | null
 }
 
@@ -125,6 +130,16 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   const r = audd.result
+
+  // Either streaming provider can supply the track length; take whichever
+  // answered. Null is fine -- the lyrics lookup just loses a tiebreak.
+  const durationSec =
+    typeof r.spotify?.duration_ms === 'number'
+      ? Math.round(r.spotify.duration_ms / 1000)
+      : typeof r.apple_music?.durationInMillis === 'number'
+        ? Math.round(r.apple_music.durationInMillis / 1000)
+        : null
+
   return res.status(200).json({
     status: 'found',
     song: {
@@ -137,6 +152,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       // This is what lets the next milestone jump to the right lyric line.
       timecode: r.timecode ?? null,
       songLink: r.song_link ?? null,
+      durationSec,
     },
   })
 }

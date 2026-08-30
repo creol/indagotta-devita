@@ -1,4 +1,4 @@
-import type { RecognitionResponse } from '../types'
+import type { LyricsResponse, RecognitionResponse, Song } from '../types'
 import { blobToBase64 } from './recorder'
 
 /**
@@ -50,4 +50,41 @@ export function timecodeToSeconds(timecode: string | null): number | null {
 
   // ["01","24"] -> 84   |   ["01","02","03"] -> 3723
   return parts.reduce((total, part) => total * 60 + part, 0)
+}
+
+/**
+ * Asks our own /api/lyrics for timestamped lyrics for a recognised song.
+ *
+ * Sends the album and duration too when we have them: LRCLIB uses both to pick
+ * the right recording, and a wrong pick means timings that drift.
+ */
+export async function fetchLyrics(song: Song, signal?: AbortSignal): Promise<LyricsResponse> {
+  const response = await fetch('/api/lyrics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: song.title,
+      artist: song.artist,
+      album: song.album ?? undefined,
+      durationSec: song.durationSec ?? undefined,
+    }),
+    signal,
+  })
+
+  let data: unknown
+  try {
+    data = await response.json()
+  } catch {
+    throw new Error(`The lyrics service returned an unexpected response (HTTP ${response.status}).`)
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === 'object' && data !== null && 'error' in data
+        ? String((data as { error: unknown }).error)
+        : `Lyrics lookup failed (HTTP ${response.status}).`
+    throw new Error(message)
+  }
+
+  return data as LyricsResponse
 }
