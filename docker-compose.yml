@@ -15,11 +15,13 @@ services:
     container_name: singalong
     restart: unless-stopped
     ports:
-      # host:container -- change 8080 on the left if that port is taken.
-      - "8080:8080"
+      # host:container. 3300 on the host because QNAP's own admin UI already
+      # owns 8080 -- publishing there would either fail to bind or shadow the
+      # NAS web interface. The container still listens on 8080 internally, so
+      # the image stays portable; only the host side is NAS-specific.
+      - "3300:8080"
     environment:
       - AUDD_API_TOKEN=${AUDD_API_TOKEN:?set AUDD_API_TOKEN in .env}
-      - PORT=8080
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s

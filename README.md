@@ -184,7 +184,9 @@ enough. Two supported ways to run it:
 
 ### Option A — Self-hosting with Docker (NAS, VPS, homelab)
 
-One container serves both the React app and the API, on port **8080**.
+One container serves both the React app and the API. It listens on **8080**
+inside the container, published on host port **3300** — QNAP's own admin UI
+owns 8080, so publishing there would clash.
 
 ```bash
 # 1. Put your token in .env next to docker-compose.yml
@@ -194,8 +196,24 @@ echo "AUDD_API_TOKEN=your_real_token_here" > .env
 docker compose up -d --build
 
 # 3. Check it
-curl http://localhost:8080/healthz     # -> ok
+curl http://localhost:3300/healthz     # -> ok
 ```
+
+**QNAP workflow (Windows -> NAS over SMB):**
+
+There is no need to `git clone` on the NAS. Sync the source across and build
+there:
+
+```
+1. deploy-to-qnap.bat          (on Windows) robocopy C:\Dev -> Y:\indagotta-devita
+2. ssh admin@your-nas
+3. cd /share/ZFS21_DATA/docker_containers/indagotta-devita
+4. ./deploy.sh                 builds the image and restarts the container
+```
+
+`deploy.sh --clean` forces a no-cache rebuild. The `.env` holding your token
+lives **only on the NAS** and is excluded from the robocopy mirror, so a sync
+never deletes or overwrites it — create it once, on the NAS.
 
 The token is read from the environment at run time, so it is **never baked into
 the image** — the image is safe to rebuild, copy between machines, or push to a
@@ -207,7 +225,7 @@ private registry.
 | --- | --- |
 | Scheme | `http` (TLS is terminated by NPM, not the container) |
 | Forward Hostname / IP | your host's LAN IP, or the container name on a shared Docker network |
-| Forward Port | `8080` |
+| Forward Port | `3300` |
 | Block Common Exploits | on |
 | SSL | request a certificate and enable **Force SSL** |
 
