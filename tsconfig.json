@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    // Modern browser + Node target. "DOM" gives us types for MediaRecorder,
+    // navigator.mediaDevices, fetch, etc.
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+
+    "jsx": "react-jsx",
+
+    // Vite compiles the code; TypeScript is only used for type-checking.
+    "noEmit": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+
+    // Helpful strictness for catching mistakes early.
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src", "api", "vite.config.ts"]
+}
