@@ -34,6 +34,48 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+# A .env created on Windows is the single most likely way this deploy breaks, and
+# the error docker returns for it is unreadable -- the whole first line arrives as
+# one variable name full of NUL bytes. Two distinct faults, both caught here:
+#
+#   BOM   PowerShell 5.1's `echo x > file` writes UTF-16LE with a byte-order mark.
+#         Docker's parser reads it as garbage and fails before any build starts.
+#   CRLF  Survives even a plain ASCII file, and is worse because it does NOT fail:
+#         the trailing CR is included in the value, so a token that looks perfect
+#         is silently rejected by AudD as invalid.
+#
+# Detection avoids embedding a carriage return in this script: `tr -cd` keeps only
+# CR bytes and counts them, so there is no escape sequence to get mangled by an
+# editor, a git checkout, or a copy through a Windows share.
+ENV_HEAD="$(head -c 3 .env | od -An -tx1 | tr -d ' \n')"
+case "$ENV_HEAD" in
+  fffe*|feff*|efbbbf*)
+    cat <<'MSG'
+ERROR: .env has a byte-order mark -- it is UTF-16 or UTF-8-with-BOM.
+       This is what 'echo ... > .env' produces in Windows PowerShell.
+       Docker cannot parse it. Either recreate it in this shell:
+
+         echo 'AUDD_API_TOKEN=your_token_here' > .env
+
+       or convert the existing file in place, keeping your token:
+
+         python3 -c "import pathlib;p=pathlib.Path('.env');p.write_bytes(p.read_bytes().decode('utf-16').replace(chr(13),'').encode('utf-8'))"
+MSG
+    exit 1
+    ;;
+esac
+
+if [ "$(tr -cd '\r' < .env | wc -c | tr -d ' ')" != "0" ]; then
+  cat <<'MSG'
+ERROR: .env has Windows CRLF line endings.
+       The trailing carriage return becomes part of the token, so AudD rejects
+       it while the file looks perfectly correct. Strip them:
+
+         sed -i 's/\r$//' .env
+MSG
+  exit 1
+fi
+
 BUILD_ARGS=""
 if [ "$1" = "--clean" ]; then
   BUILD_ARGS="--no-cache"

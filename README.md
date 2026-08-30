@@ -213,17 +213,24 @@ Set up once, from Windows:
 
 ```
 git clone https://github.com/creol/indagotta-devita.git Y:\indagotta-devita
-cd /d Y:\indagotta-devita
-echo AUDD_API_TOKEN=your_token_here > .env
 ```
 
-Then on chonk:
+Then on chonk, over SSH:
 
 ```bash
 cd /share/ZFS21_DATA/docker_containers/indagotta-devita
-bash deploy.sh                              # build and start
-sudo bash ensure-watcher.sh --install-cron  # optional: auto-deploy on save
+echo 'AUDD_API_TOKEN=your_token_here' > .env   # create it HERE, not on Windows
+bash deploy.sh                                 # build and start
+sudo bash ensure-watcher.sh --install-cron     # optional: auto-deploy on save
 ```
+
+> **Create `.env` from the SSH session, not from Windows.** `echo x > file` in
+> Windows PowerShell 5.1 writes **UTF-16 with a byte-order mark**, which Docker
+> cannot parse at all; and even a plain ASCII file saved on Windows carries CRLF
+> endings, which silently append a carriage return to the token so AudD rejects
+> it while the file looks perfectly correct. `deploy.sh` detects both and tells
+> you how to fix them, but creating the file on the NAS avoids the problem
+> entirely.
 
 With the watcher installed, saving a file under `src/`, `api/`, `server/`,
 `public/`, or any of the root build files triggers a rebuild automatically;
@@ -305,6 +312,9 @@ On Vercel, `server/index.mjs` and the Dockerfile are unused — Vercel serves
 | Recognition fails only in `npm run preview` | Expected: `preview` serves static files with no `/api`. Use `npm run dev`. |
 | Self-hosted: Listen fails with 413 | The reverse proxy is rejecting the upload. Add `client_max_body_size 10m;` to the proxy host's Advanced tab. |
 | Self-hosted: mic button says unavailable | The site is being served over plain `http://`. Terminate TLS at the proxy and force SSL. |
+| `.env` error: `unexpected character` in variable name | The file is UTF-16/BOM — written by Windows PowerShell. Recreate it on the NAS: `echo 'AUDD_API_TOKEN=...' > .env` |
+| Token looks right but AudD says it's invalid | `.env` has CRLF endings, so the token carries a trailing carriage return. `sed -i 's/
+$//' .env` |
 | Self-hosted: page loads but `/api/recognize` 404s | The container is serving only static files. Make sure you built with the provided `Dockerfile`, not a bare nginx image. |
 
 ---
