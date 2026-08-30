@@ -17,9 +17,21 @@ import { stat } from 'node:fs/promises'
 import { extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// The API handler is written for Vercel's (req, res) shape. esbuild bundles it
-// into this file at build time -- see "npm run build:server".
+// The API handlers are written for Vercel's (req, res) shape. esbuild bundles
+// them into this file at build time -- see "npm run build:server".
+//
+// IMPORTANT: adding a file to /api is NOT enough to expose it here. Vercel
+// routes /api/* by filename, and the Vite dev plugin loads handlers by path, so
+// a new route works in both of those without any wiring -- and then 404s in the
+// Docker image. esbuild needs static imports, so every route must be listed in
+// API_ROUTES below.
 import recognizeHandler from '../api/recognize.ts'
+import lyricsHandler from '../api/lyrics.ts'
+
+const API_ROUTES = {
+  '/api/recognize': recognizeHandler,
+  '/api/lyrics': lyricsHandler,
+}
 
 const PORT = Number(process.env.PORT) || 8080
 const HOST = process.env.HOST || '0.0.0.0'
@@ -59,8 +71,9 @@ const server = createServer(async (req, res) => {
       return
     }
 
-    // --- The API route -----------------------------------------------------
-    if (pathname === '/api/recognize') {
+    // --- The API routes ----------------------------------------------------
+    const apiHandler = API_ROUTES[pathname]
+    if (apiHandler) {
       // Give the handler the two helpers Vercel adds to its response object,
       // so the exact same code runs here, on Vercel, and in `npm run dev`.
       const apiRes = Object.assign(res, {
@@ -74,7 +87,7 @@ const server = createServer(async (req, res) => {
           return apiRes
         },
       })
-      await recognizeHandler(req, apiRes)
+      await apiHandler(req, apiRes)
       return
     }
 
