@@ -1,0 +1,8 @@
+# Shell scripts run on Linux (the NAS). Force LF regardless of platform --
+# a CRLF .sh fails there with "bad interpreter: /bin/bash^M".
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+
+# Batch files run on Windows and want CRLF.
+*.bat text eol=crlf

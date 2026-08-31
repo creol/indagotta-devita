@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+server-dist/
+
+# Local environment files (NEVER commit real API keys)
+.env
+.env.local
+.env.*.local
+
+# Vercel
+.vercel/
+
+# Editor / OS noise
+.DS_Store
+*.log
+
+# Watcher runtime state (created on the NAS by ensure-watcher.sh)
+deploy.log
+deploy.log.1
+.watcher.pid
+.watcher.ver
+.watcher.lock/
+.watcher-heartbeat
